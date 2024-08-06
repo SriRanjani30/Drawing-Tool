@@ -9,7 +9,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             display: flex;
-            height: 100vh;
+            height: 125vh;
             background-color: #ecf0f1;
             color: #2c3e50;
         }
@@ -37,7 +37,7 @@
             margin-bottom: 5px;
             display: block;
         }
-        .sidebar input[type="color"], .sidebar select {
+        .sidebar input[type="color"], .sidebar select, .sidebar input[type="file"] {
             margin-bottom: 15px;
             width: 100%;
             padding: 10px;
@@ -48,17 +48,12 @@
             font-size: 1em;
             transition: background-color 0.3s ease;
         }
-        .sidebar input[type="file"] {
-            margin-bottom: 15px;
-            width: 100%;
-            border-radius: 5px;
-        }
-        .color-palette {
+        .sidebar .color-palette {
             display: flex;
             gap: 10px;
-            margin-bottom: 50px;
+            margin-bottom: 20px;
         }
-        .color-palette div {
+        .sidebar .color-palette div {
             width: 35px;
             height: 35px;
             border-radius: 50%;
@@ -66,10 +61,10 @@
             border: 2px solid transparent;
             transition: border-color 0.3s ease;
         }
-        .color-palette div:hover {
+        .sidebar .color-palette div:hover {
             border-color: #ecf0f1;
         }
-        .color-palette div.active {
+        .sidebar .color-palette div.active {
             border-color: #ecf0f1;
         }
         .sidebar button {
@@ -86,41 +81,64 @@
         .sidebar button:hover {
             background-color: #2980b9;
         }
-        .toolbar {
-            display: flex;
-            flex-direction: column;
-        }
-        .toolbar button {
-            background-color: #3498db;
-            color: #fff;
-            border: none;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 1em;
-            transition: background-color 0.3s ease;
-        }
-        .toolbar button:hover {
-            background-color: #2980b9;
-        }
         .canvas-container {
             position: relative;
             overflow: hidden;
             border-radius: 10px;
-            width: 100%;
         }
         canvas {
             border: 2px solid #bdc3c7;
             background-color: #ffffff;
             border-radius: 10px;
+            cursor: crosshair;
+            height :130vh;
+        }
+        .layer-controls {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+        }
+        .layer-controls button {
+            margin-bottom: 5px;
+        }
+        .layer-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .layer-list li {
+            padding: 5px;
+            background: #34495e;
+            border: 1px solid #2c3e50;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            color: #ecf0f1;
+            font-size: 0.9em;
+        }
+        .layer-list li.active {
+            background: #3498db;
+            border-color: #2980b9;
+        }
+        .color-history {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .color-history div {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .color-history div.selected {
+            border: 2px solid #ecf0f1;
         }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <h1>Drawing App</h1>
-        <label for="color">Color:</label>
         <div class="color-palette">
             <div style="background-color: #000000;" data-color="#000000"></div>
             <div style="background-color: #ff0000;" data-color="#ff0000"></div>
@@ -170,6 +188,21 @@
         <label for="upload">Upload Image:</label>
         <input type="file" id="upload" accept="image/*">
 
+        <div class="color-history">
+            <div style="background-color: #000000;" data-color="#000000"></div>
+            <div style="background-color: #ff0000;" data-color="#ff0000"></div>
+            <div style="background-color: #00ff00;" data-color="#00ff00"></div>
+            <!-- Add more color history items here -->
+        </div>
+
+        <div class="layer-controls">
+            <button id="add-layer">Add Layer</button>
+            <button id="delete-layer">Delete Layer</button>
+            <button id="move-layer-up">Move Layer Up</button>
+            <button id="move-layer-down">Move Layer Down</button>
+            <ul class="layer-list"></ul>
+        </div>
+
         <div class="toolbar">
             <button id="undo">Undo</button>
             <button id="redo">Redo</button>
@@ -187,31 +220,30 @@
     <script>
         const canvas = document.getElementById('drawingCanvas');
         const ctx = canvas.getContext('2d');
+        const img = new Image();
         let drawing = false;
+        let startX, startY;
         let color = '#000000';
         let brushSize = 5;
         let bgColor = '#ffffff';
         let shape = 'free';
         let fontStyle = 'Arial';
-        let fontSize = 24;
+        let fontSize = '24';
         let undoStack = [];
         let redoStack = [];
-        let startX, startY;
-        let img = new Image();
+        let currentLayer = 0;
+        let layers = [];
 
         function startDrawing(event) {
             drawing = true;
-            const rect = canvas.getBoundingClientRect();
-            startX = event.clientX - rect.left;
-            startY = event.clientY - rect.top;
+            [startX, startY] = [event.offsetX, event.offsetY];
             if (shape === 'text') {
-                const text = prompt('Enter text:');
+                const text = prompt("Enter your text:");
                 if (text) {
-                    ctx.fillStyle = color;
                     ctx.font = `${fontSize}px ${fontStyle}`;
+                    ctx.fillStyle = color;
                     ctx.fillText(text, startX, startY);
                     undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-                    redoStack = [];
                 }
             } else {
                 ctx.beginPath();
@@ -220,20 +252,15 @@
         }
 
         function stopDrawing() {
-            if (drawing) {
-                undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-                redoStack = [];
-            }
             drawing = false;
             ctx.beginPath();
+            undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
         }
 
         function draw(event) {
             if (!drawing) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
+            const x = event.offsetX;
+            const y = event.offsetY;
 
             ctx.lineWidth = brushSize;
             ctx.lineCap = 'round';
@@ -348,6 +375,80 @@
             }
         }
 
+        function addLayer() {
+            const newLayer = document.createElement('li');
+            newLayer.textContent = `Layer ${layers.length + 1}`;
+            newLayer.dataset.index = layers.length;
+            newLayer.addEventListener('click', () => setLayer(newLayer.dataset.index));
+            document.querySelector('.layer-list').appendChild(newLayer);
+            layers.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        }
+
+        function deleteLayer() {
+            if (layers.length > 0) {
+                const layerList = document.querySelector('.layer-list');
+                const activeLayer = layerList.querySelector('li.active');
+                if (activeLayer) {
+                    const index = activeLayer.dataset.index;
+                    layers.splice(index, 1);
+                    layerList.removeChild(activeLayer);
+                    if (layers.length > 0) {
+                        setLayer(Math.min(index, layers.length - 1));
+                    } else {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                }
+            }
+        }
+
+        function moveLayerUp() {
+            const layerList = document.querySelector('.layer-list');
+            const activeLayer = layerList.querySelector('li.active');
+            if (activeLayer) {
+                const index = parseInt(activeLayer.dataset.index);
+                if (index < layers.length - 1) {
+                    [layers[index], layers[index + 1]] = [layers[index + 1], layers[index]];
+                    updateLayerList();
+                    setLayer(index + 1);
+                }
+            }
+        }
+
+        function moveLayerDown() {
+            const layerList = document.querySelector('.layer-list');
+            const activeLayer = layerList.querySelector('li.active');
+            if (activeLayer) {
+                const index = parseInt(activeLayer.dataset.index);
+                if (index > 0) {
+                    [layers[index], layers[index - 1]] = [layers[index - 1], layers[index]];
+                    updateLayerList();
+                    setLayer(index - 1);
+                }
+            }
+        }
+
+        function setLayer(index) {
+            if (index >= 0 && index < layers.length) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.putImageData(layers[index], 0, 0);
+                document.querySelectorAll('.layer-list li').forEach(li => li.classList.remove('active'));
+                document.querySelector(`.layer-list li[data-index="${index}"]`).classList.add('active');
+                currentLayer = index;
+            }
+        }
+
+        function updateLayerList() {
+            const layerList = document.querySelector('.layer-list');
+            layerList.innerHTML = '';
+            layers.forEach((_, i) => {
+                const layerItem = document.createElement('li');
+                layerItem.textContent = `Layer ${i + 1}`;
+                layerItem.dataset.index = i;
+                layerItem.addEventListener('click', () => setLayer(i));
+                layerList.appendChild(layerItem);
+            });
+        }
+
         document.getElementById('color').addEventListener('input', updateColor);
         document.getElementById('brush-size').addEventListener('change', updateBrushSize);
         document.getElementById('bg-color').addEventListener('input', updateBgColor);
@@ -360,6 +461,10 @@
         document.getElementById('clear').addEventListener('click', clearCanvas);
         document.getElementById('reset').addEventListener('click', resetCanvas);
         document.getElementById('save').addEventListener('click', saveDrawing);
+        document.getElementById('add-layer').addEventListener('click', addLayer);
+        document.getElementById('delete-layer').addEventListener('click', deleteLayer);
+        document.getElementById('move-layer-up').addEventListener('click', moveLayerUp);
+        document.getElementById('move-layer-down').addEventListener('click', moveLayerDown);
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
