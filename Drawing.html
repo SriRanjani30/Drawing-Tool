@@ -234,9 +234,22 @@
         let currentLayer = 0;
         let layers = [];
 
+        function getCanvasCoordinates(event) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (event.clientX - rect.left) * scaleX,
+                y: (event.clientY - rect.top) * scaleY
+            };
+        }
+
         function startDrawing(event) {
+            const { x, y } = getCanvasCoordinates(event);
             drawing = true;
-            [startX, startY] = [event.offsetX, event.offsetY];
+            startX = x;
+            startY = y;
+
             if (shape === 'text') {
                 const text = prompt("Enter your text:");
                 if (text) {
@@ -251,17 +264,10 @@
             }
         }
 
-        function stopDrawing() {
-            drawing = false;
-            ctx.beginPath();
-            undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-        }
-
         function draw(event) {
             if (!drawing) return;
-            const x = event.offsetX;
-            const y = event.offsetY;
 
+            const { x, y } = getCanvasCoordinates(event);
             ctx.lineWidth = brushSize;
             ctx.lineCap = 'round';
             ctx.strokeStyle = color;
@@ -290,185 +296,164 @@
             }
         }
 
-        function updateColor(event) {
-            color = event.target.value;
-            document.querySelectorAll('.color-palette div').forEach(div => {
-                if (div.dataset.color === color) {
-                    div.classList.add('active');
-                } else {
-                    div.classList.remove('active');
-                }
-            });
-        }
-
-        function updateBrushSize(event) {
-            brushSize = event.target.value;
-        }
-
-        function updateBgColor(event) {
-            bgColor = event.target.value;
-            canvas.style.backgroundColor = bgColor;
-        }
-
-        function updateShape(event) {
-            shape = event.target.value;
-        }
-
-        function updateFontStyle(event) {
-            fontStyle = event.target.value;
-        }
-
-        function updateFontSize(event) {
-            fontSize = event.target.value;
-        }
-
-        function undo() {
-            if (undoStack.length > 0) {
-                redoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-                const prevState = undoStack.pop();
-                ctx.putImageData(prevState, 0, 0);
-            }
-        }
-
-        function redo() {
-            if (redoStack.length > 0) {
+        function stopDrawing() {
+            if (drawing) {
+                drawing = false;
                 undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-                const nextState = redoStack.pop();
-                ctx.putImageData(nextState, 0, 0);
+                redoStack = [];
+                ctx.beginPath();
             }
         }
 
-        function clearCanvas() {
+        document.getElementById('color').addEventListener('input', function() {
+            color = this.value;
+        });
+
+        document.getElementById('brush-size').addEventListener('change', function() {
+            brushSize = this.value;
+        });
+
+        document.getElementById('bg-color').addEventListener('input', function() {
+            bgColor = this.value;
+            canvas.style.backgroundColor = bgColor;
+        });
+
+        document.getElementById('shape').addEventListener('change', function() {
+            shape = this.value;
+        });
+
+        document.getElementById('font-style').addEventListener('change', function() {
+            fontStyle = this.value;
+        });
+
+        document.getElementById('font-size').addEventListener('change', function() {
+            fontSize = this.value;
+        });
+
+        document.getElementById('upload').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                img.src = e.target.result;
+                img.onload = function() {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                };
+            };
+            reader.readAsDataURL(file);
+        });
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        document.getElementById('undo').addEventListener('click', function() {
+            if (undoStack.length > 0) {
+                redoStack.push(undoStack.pop());
+                if (undoStack.length > 0) {
+                    ctx.putImageData(undoStack[undoStack.length - 1], 0, 0);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+        });
+
+        document.getElementById('redo').addEventListener('click', function() {
+            if (redoStack.length > 0) {
+                undoStack.push(redoStack.pop());
+                ctx.putImageData(undoStack[undoStack.length - 1], 0, 0);
+            }
+        });
+
+        document.getElementById('clear').addEventListener('click', function() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-            redoStack = [];
-        }
+        });
 
-        function resetCanvas() {
+        document.getElementById('reset').addEventListener('click', function() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = bgColor;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             undoStack = [];
             redoStack = [];
-        }
+        });
 
-        function saveDrawing() {
+        document.getElementById('save').addEventListener('click', function() {
             const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.href = dataURL;
             link.download = 'drawing.png';
             link.click();
-        }
+        });
 
-        function uploadImage(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    img.src = e.target.result;
-                    img.onload = function() {
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-                    }
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-
-        function addLayer() {
-            const newLayer = document.createElement('li');
-            newLayer.textContent = `Layer ${layers.length + 1}`;
-            newLayer.dataset.index = layers.length;
-            newLayer.addEventListener('click', () => setLayer(newLayer.dataset.index));
-            document.querySelector('.layer-list').appendChild(newLayer);
-            layers.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-        }
-
-        function deleteLayer() {
-            if (layers.length > 0) {
-                const layerList = document.querySelector('.layer-list');
-                const activeLayer = layerList.querySelector('li.active');
-                if (activeLayer) {
-                    const index = activeLayer.dataset.index;
-                    layers.splice(index, 1);
-                    layerList.removeChild(activeLayer);
-                    if (layers.length > 0) {
-                        setLayer(Math.min(index, layers.length - 1));
-                    } else {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    }
-                }
-            }
-        }
-
-        function moveLayerUp() {
-            const layerList = document.querySelector('.layer-list');
-            const activeLayer = layerList.querySelector('li.active');
-            if (activeLayer) {
-                const index = parseInt(activeLayer.dataset.index);
-                if (index < layers.length - 1) {
-                    [layers[index], layers[index + 1]] = [layers[index + 1], layers[index]];
-                    updateLayerList();
-                    setLayer(index + 1);
-                }
-            }
-        }
-
-        function moveLayerDown() {
-            const layerList = document.querySelector('.layer-list');
-            const activeLayer = layerList.querySelector('li.active');
-            if (activeLayer) {
-                const index = parseInt(activeLayer.dataset.index);
-                if (index > 0) {
-                    [layers[index], layers[index - 1]] = [layers[index - 1], layers[index]];
-                    updateLayerList();
-                    setLayer(index - 1);
-                }
-            }
-        }
-
-        function setLayer(index) {
-            if (index >= 0 && index < layers.length) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.putImageData(layers[index], 0, 0);
-                document.querySelectorAll('.layer-list li').forEach(li => li.classList.remove('active'));
-                document.querySelector(`.layer-list li[data-index="${index}"]`).classList.add('active');
-                currentLayer = index;
-            }
-        }
+        document.querySelectorAll('.color-palette div').forEach(function(element) {
+            element.addEventListener('click', function() {
+                document.querySelectorAll('.color-palette div').forEach(function(el) {
+                    el.classList.remove('active');
+                });
+                this.classList.add('active');
+                color = this.getAttribute('data-color');
+                document.getElementById('color').value = color;
+            });
+        });
 
         function updateLayerList() {
             const layerList = document.querySelector('.layer-list');
             layerList.innerHTML = '';
-            layers.forEach((_, i) => {
-                const layerItem = document.createElement('li');
-                layerItem.textContent = `Layer ${i + 1}`;
-                layerItem.dataset.index = i;
-                layerItem.addEventListener('click', () => setLayer(i));
-                layerList.appendChild(layerItem);
+            layers.forEach((layer, index) => {
+                const li = document.createElement('li');
+                li.textContent = `Layer ${index + 1}`;
+                li.dataset.index = index;
+                if (index === currentLayer) {
+                    li.classList.add('active');
+                }
+                li.addEventListener('click', function() {
+                    currentLayer = index;
+                    updateLayerList();
+                });
+                layerList.appendChild(li);
             });
         }
 
-        document.getElementById('color').addEventListener('input', updateColor);
-        document.getElementById('brush-size').addEventListener('change', updateBrushSize);
-        document.getElementById('bg-color').addEventListener('input', updateBgColor);
-        document.getElementById('shape').addEventListener('change', updateShape);
-        document.getElementById('font-style').addEventListener('change', updateFontStyle);
-        document.getElementById('font-size').addEventListener('change', updateFontSize);
-        document.getElementById('upload').addEventListener('change', uploadImage);
-        document.getElementById('undo').addEventListener('click', undo);
-        document.getElementById('redo').addEventListener('click', redo);
-        document.getElementById('clear').addEventListener('click', clearCanvas);
-        document.getElementById('reset').addEventListener('click', resetCanvas);
-        document.getElementById('save').addEventListener('click', saveDrawing);
-        document.getElementById('add-layer').addEventListener('click', addLayer);
-        document.getElementById('delete-layer').addEventListener('click', deleteLayer);
-        document.getElementById('move-layer-up').addEventListener('click', moveLayerUp);
-        document.getElementById('move-layer-down').addEventListener('click', moveLayerDown);
+        document.getElementById('add-layer').addEventListener('click', function() {
+            layers.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+            currentLayer = layers.length - 1;
+            updateLayerList();
+        });
 
-        canvas.addEventListener('mousedown', startDrawing);
-        canvas.addEventListener('mouseup', stopDrawing);
-        canvas.addEventListener('mousemove', draw);
+        document.getElementById('delete-layer').addEventListener('click', function() {
+            if (layers.length > 1) {
+                layers.splice(currentLayer, 1);
+                currentLayer = Math.max(0, currentLayer - 1);
+                updateLayerList();
+                ctx.putImageData(layers[currentLayer], 0, 0);
+            }
+        });
+
+        document.getElementById('move-layer-up').addEventListener('click', function() {
+            if (currentLayer > 0) {
+                const temp = layers[currentLayer];
+                layers[currentLayer] = layers[currentLayer - 1];
+                layers[currentLayer - 1] = temp;
+                currentLayer--;
+                updateLayerList();
+                ctx.putImageData(layers[currentLayer], 0, 0);
+            }
+        });
+
+        document.getElementById('move-layer-down').addEventListener('click', function() {
+            if (currentLayer < layers.length - 1) {
+                const temp = layers[currentLayer];
+                layers[currentLayer] = layers[currentLayer + 1];
+                layers[currentLayer + 1] = temp;
+                currentLayer++;
+                updateLayerList();
+                ctx.putImageData(layers[currentLayer], 0, 0);
+            }
+        });
+
+        updateLayerList();
     </script>
 </body>
 </html>
